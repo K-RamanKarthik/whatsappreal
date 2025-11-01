@@ -1,265 +1,135 @@
-// WhatsApp Spam Detector - Content Script
+// Universal Spam Detector - Content Script
 
-(function() {
-    'use strict';
+let enabled = true;
+let showWarnings = true;
+let threshold = 30;
 
-    // Spam detection patterns and heuristics
-    const spamDetector = {
-        // Common spam indicators
-        patterns: {
-            urls: /(https?:\/\/[^\s]+|www\.[^\s]+)/gi,
-            phoneNumbers: /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g,
-            email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
-            currency: /[\$£€₹]\s*\d+|\d+\s*[\$£€₹]/gi,
-            urgency: /\b(urgent|limited time|act now|click here|claim now|free money|winner|congratulations|prize)\b/gi,
-            suspiciousWords: /\b(bank account|transfer money|verify account|suspended|blocked|expired|reactivate)\b/gi
-        },
+// Basic spam keywords — you can customize this list
+const spamWords = [
+    "free money",
+    "click here",
+    "urgent offer",
+    "win big",
+    "limited time",
+    "congratulations",
+    "claim your prize",
+    "easy cash",
+    "guaranteed income"
+];
 
-        // Calculate spam score (0-100)
-        calculateSpamScore: function(text) {
-            let score = 0;
-            const textLower = text.toLowerCase();
+// Initial load: read user settings
+chrome.storage.sync.get(["enabled", "threshold", "showWarnings"], (result) => {
+    enabled = result.enabled !== undefined ? result.enabled : true;
+    threshold = result.threshold || 30;
+    showWarnings = result.showWarnings !== undefined ? result.showWarnings : true;
 
-            // URL count (more URLs = higher spam score)
-            const urlMatches = text.match(this.patterns.urls);
-            if (urlMatches) {
-                score += Math.min(urlMatches.length * 15, 40);
+    if (enabled) scanPage();
+});
+
+// Listen for popup messages
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    switch (message.action) {
+        case "toggle":
+            enabled = message.enabled;
+            if (enabled) scanPage();
+            else clearHighlights();
+            break;
+
+        case "toggleWarnings":
+            showWarnings = message.showWarnings;
+            break;
+
+        case "updateThreshold":
+            threshold = message.threshold;
+            break;
+
+        case "rescan":
+            if (enabled) {
+                clearHighlights();
+                scanPage();
+                sendResponse({ success: true });
             }
-
-            // Phone numbers
-            const phoneMatches = text.match(this.patterns.phoneNumbers);
-            if (phoneMatches && phoneMatches.length > 1) {
-                score += 20;
-            }
-
-            // Email addresses
-            const emailMatches = text.match(this.patterns.email);
-            if (emailMatches) {
-                score += 15;
-            }
-
-            // Currency mentions
-            const currencyMatches = text.match(this.patterns.currency);
-            if (currencyMatches) {
-                score += 10;
-            }
-
-            // Urgency keywords
-            const urgencyMatches = textLower.match(this.patterns.urgency);
-            if (urgencyMatches) {
-                score += Math.min(urgencyMatches.length * 10, 25);
-            }
-
-            // Suspicious financial keywords
-            const suspiciousMatches = textLower.match(this.patterns.suspiciousWords);
-            if (suspiciousMatches) {
-                score += Math.min(suspiciousMatches.length * 12, 30);
-            }
-
-            // Message length (very short or very long can be spam)
-            if (text.length < 20 && score > 0) {
-                score += 10;
-            } else if (text.length > 500) {
-                score += 5;
-            }
-
-            // Multiple exclamation marks
-            const exclamationCount = (text.match(/!/g) || []).length;
-            if (exclamationCount > 3) {
-                score += Math.min(exclamationCount * 2, 15);
-            }
-
-            // ALL CAPS (excessive capitalization)
-            const capsRatio = (text.match(/[A-Z]/g) || []).length / text.length;
-            if (capsRatio > 0.5 && text.length > 10) {
-                score += 15;
-            }
-
-            return Math.min(score, 100);
-        },
-
-        // Determine if message is spam
-        isSpam: function(text, threshold = 30) {
-            return this.calculateSpamScore(text) >= threshold;
-        },
-
-        // Get risk level
-        getRiskLevel: function(score) {
-            if (score >= 70) return 'high';
-            if (score >= 40) return 'medium';
-            if (score >= 20) return 'low';
-            return 'safe';
-        }
-    };
-
-    // UI elements for warnings
-    const warningUI = {
-        createWarning: function(messageElement, score, riskLevel) {
-            // Remove existing warning if any
-            const existingWarning = messageElement.querySelector('.spam-warning');
-            if (existingWarning) {
-                existingWarning.remove();
-            }
-
-            // Create warning element
-            const warning = document.createElement('div');
-            warning.className = `spam-warning spam-${riskLevel}`;
-            
-            const icon = riskLevel === 'high' ? '⚠️' : riskLevel === 'medium' ? '⚡' : 'ℹ️';
-            const message = riskLevel === 'high' ? 'HIGH RISK: Potential spam detected!' :
-                           riskLevel === 'medium' ? 'CAUTION: Suspicious content detected' :
-                           'INFO: Some spam indicators found';
-            
-            warning.innerHTML = `
-                <div class="spam-warning-content">
-                    <span class="spam-icon">${icon}</span>
-                    <span class="spam-message">${message}</span>
-                    <span class="spam-score">Spam Score: ${score}%</span>
-                </div>
-            `;
-
-            // Insert warning after the message
-            messageElement.appendChild(warning);
-        },
-
-        highlightMessage: function(messageElement, riskLevel) {
-            messageElement.classList.add(`spam-${riskLevel}`);
-        }
-    };
-
-    // Observer for new messages
-    let messageObserver;
-
-    // Function to analyze a message element
-    function analyzeMessage(messageElement) {
-        // Get message text
-        const textSelectors = [
-            '[data-testid="conversation-turn-holder"] span.selectable-text',
-            '.copyable-text span.selectable-text',
-            '.message span.selectable-text',
-            'span.selectable-text'
-        ];
-
-        let messageText = '';
-        for (const selector of textSelectors) {
-            const textElement = messageElement.querySelector(selector);
-            if (textElement) {
-                messageText = textElement.textContent || textElement.innerText;
-                break;
-            }
-        }
-
-        if (!messageText || messageText.trim().length === 0) {
-            return;
-        }
-
-        // Calculate spam score
-        const score = spamDetector.calculateSpamScore(messageText);
-        const riskLevel = spamDetector.getRiskLevel(score);
-        const isSpam = spamDetector.isSpam(messageText);
-
-        // Only show warning if spam detected
-        if (isSpam) {
-            warningUI.createWarning(messageElement, score, riskLevel);
-            warningUI.highlightMessage(messageElement, riskLevel);
-        }
+            break;
     }
+});
 
-    // Function to scan all messages on page
-    function scanAllMessages() {
-        // Wait for WhatsApp to load
-        const messageContainers = document.querySelectorAll('[data-testid="conversation-turn-holder"], .message, [data-id]');
-        
-        messageContainers.forEach((container) => {
-            // Skip if already analyzed
-            if (container.dataset.spamAnalyzed === 'true') {
-                return;
-            }
-            
-            analyzeMessage(container);
-            container.dataset.spamAnalyzed = 'true';
-        });
-    }
+// --- Spam Detection Logic ---
 
-    // Setup mutation observer for new messages
-    function setupObserver() {
-        const chatContainer = document.querySelector('[role="application"]') || 
-                             document.querySelector('#main') || 
-                             document.body;
+function scanPage() {
+    if (!enabled) return;
 
-        if (!chatContainer) {
-            setTimeout(setupObserver, 1000);
-            return;
+    const textNodes = getTextNodes(document.body);
+    textNodes.forEach((node) => {
+        const text = node.textContent.toLowerCase();
+        let score = calculateSpamScore(text);
+        if (score >= threshold) {
+            highlightText(node);
+            if (showWarnings) showTooltip(node, score);
         }
-
-        messageObserver = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType === 1) { // Element node
-                        // Check if it's a message container
-                        if (node.matches && (
-                            node.matches('[data-testid="conversation-turn-holder"]') ||
-                            node.matches('.message') ||
-                            node.querySelector('[data-testid="conversation-turn-holder"]') ||
-                            node.querySelector('.message')
-                        )) {
-                            setTimeout(() => {
-                                const messageContainer = node.matches('[data-testid="conversation-turn-holder"]') || 
-                                                       node.matches('.message') ? 
-                                                       node : 
-                                                       node.querySelector('[data-testid="conversation-turn-holder"]') || 
-                                                       node.querySelector('.message');
-                                
-                                if (messageContainer) {
-                                    analyzeMessage(messageContainer);
-                                }
-                            }, 500);
-                        }
-                    }
-                });
-            });
-        });
-
-        messageObserver.observe(chatContainer, {
-            childList: true,
-            subtree: true
-        });
-    }
-
-    // Initialize when page loads
-    function init() {
-        console.log('WhatsApp Spam Detector initialized');
-        
-        // Wait for WhatsApp to fully load
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                setTimeout(() => {
-                    scanAllMessages();
-                    setupObserver();
-                }, 2000);
-            });
-        } else {
-            setTimeout(() => {
-                scanAllMessages();
-                setupObserver();
-            }, 2000);
-        }
-
-        // Re-scan periodically (in case observer misses something)
-        setInterval(scanAllMessages, 5000);
-    }
-
-    // Start initialization
-    init();
-
-    // Listen for messages from popup/background
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        if (request.action === 'rescan') {
-            scanAllMessages();
-            sendResponse({success: true});
-        }
-        return true;
     });
+}
 
-})();
+function clearHighlights() {
+    document.querySelectorAll(".spam-highlight").forEach((el) => {
+        el.classList.remove("spam-highlight");
+        const tooltip = el.querySelector(".spam-tooltip");
+        if (tooltip) tooltip.remove();
+    });
+}
 
+function calculateSpamScore(text) {
+    let score = 0;
+    for (const word of spamWords) {
+        if (text.includes(word)) score += 20;
+    }
+    return Math.min(score, 100);
+}
+
+// --- DOM Utilities ---
+
+function getTextNodes(element) {
+    const walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode(node) {
+                const trimmed = node.textContent.trim();
+                if (!trimmed) return NodeFilter.FILTER_REJECT;
+                if (trimmed.length < 10) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    return nodes;
+}
+
+function highlightText(node) {
+    const span = document.createElement("span");
+    span.className = "spam-highlight";
+    span.style.backgroundColor = "rgba(255, 0, 0, 0.2)";
+    span.style.borderRadius = "3px";
+    span.style.transition = "background 0.3s ease";
+    node.parentNode.replaceChild(span, node);
+    span.appendChild(node);
+}
+
+function showTooltip(node, score) {
+    const tooltip = document.createElement("div");
+    tooltip.className = "spam-tooltip";
+    tooltip.textContent = `Spam score: ${score}%`;
+    tooltip.style.position = "absolute";
+    tooltip.style.background = "#ff5555";
+    tooltip.style.color = "#fff";
+    tooltip.style.fontSize = "12px";
+    tooltip.style.padding = "2px 6px";
+    tooltip.style.borderRadius = "4px";
+    tooltip.style.zIndex = "99999";
+    tooltip.style.pointerEvents = "none";
+    tooltip.style.transform = "translateY(-1.5em)";
+    node.parentElement.style.position = "relative";
+    node.parentElement.appendChild(tooltip);
+
+    setTimeout(() => tooltip.remove(), 2000);
+}
