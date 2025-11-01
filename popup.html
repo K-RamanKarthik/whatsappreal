@@ -1,275 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Spam Detector</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            width: 320px;
-            padding: 20px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-        }
-
-        .container {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        }
-
-        h1 {
-            font-size: 20px;
-            margin-bottom: 5px;
-            color: #25D366;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .subtitle {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 20px;
-        }
-
-        .status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px;
-            background: #f5f5f5;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #25D366;
-            animation: pulse 2s infinite;
-        }
-
-        .status-indicator.inactive {
-            background: #ccc;
-            animation: none;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .toggle-group {
-            margin-bottom: 15px;
-        }
-
-        label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 8px;
-            color: #333;
-        }
-
-        .toggle {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 24px;
-        }
-
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 24px;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 18px;
-            width: 18px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: #25D366;
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(26px);
-        }
-
-        .slider-label {
-            font-size: 13px;
-            color: #666;
-        }
-
-        .threshold-container {
-            margin-top: 15px;
-        }
-
-        .threshold-input {
-            width: 100%;
-            margin-top: 8px;
-        }
-
-        input[type="range"] {
-            width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            background: #ddd;
-            outline: none;
-        }
-
-        input[type="range"]::-webkit-slider-thumb {
-            appearance: none;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #25D366;
-            cursor: pointer;
-        }
-
-        .threshold-value {
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-            color: #25D366;
-            margin-top: 5px;
-        }
-
-        .button {
-            width: 100%;
-            padding: 12px;
-            background: #25D366;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 15px;
-            transition: all 0.3s;
-        }
-
-        .button:hover {
-            background: #20ba5a;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
-        }
-
-        .button:active {
-            transform: translateY(0);
-        }
-
-        .info {
-            margin-top: 15px;
-            padding: 12px;
-            background: #e8f5e9;
-            border-radius: 8px;
-            font-size: 12px;
-            color: #2e7d32;
-            line-height: 1.5;
-        }
-
-        .footer {
-            margin-top: 15px;
-            text-align: center;
-            font-size: 11px;
-            color: #999;
-        }
-    </style>
+  <title>Spam Detector</title>
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-    <div class="container">
-        <h1>
-            <span>🛡️</span>
-            WhatsApp Spam Detector
-        </h1>
-        <div class="subtitle">Protect yourself from fake and spam messages</div>
+  <h3>Spam Detector Settings</h3>
 
-        <div class="status">
-            <div class="status-indicator" id="statusIndicator"></div>
-            <span id="statusText">Active</span>
-        </div>
+  <label>
+    <input type="checkbox" id="enableToggle">
+    Enable Detector <span id="enableLabel">Enabled</span>
+  </label>
+  <br>
 
-        <div class="toggle-group">
-            <label>Enable Detection</label>
-            <div class="toggle">
-                <label class="switch">
-                    <input type="checkbox" id="enableToggle" checked>
-                    <span class="slider"></span>
-                </label>
-                <span class="slider-label" id="enableLabel">Enabled</span>
-            </div>
-        </div>
+  <label>
+    <input type="checkbox" id="warningsToggle">
+    Show Warnings <span id="warningsLabel">Enabled</span>
+  </label>
+  <br>
 
-        <div class="toggle-group">
-            <label>Show Warnings</label>
-            <div class="toggle">
-                <label class="switch">
-                    <input type="checkbox" id="warningsToggle" checked>
-                    <span class="slider"></span>
-                </label>
-                <span class="slider-label" id="warningsLabel">Enabled</span>
-            </div>
-        </div>
+  <label>
+    Threshold: <span id="thresholdValue">30%</span><br>
+    <input type="range" id="thresholdSlider" min="10" max="100" value="30">
+  </label>
+  <br>
 
-        <div class="threshold-container">
-            <label>Spam Detection Threshold: <span class="threshold-value" id="thresholdValue">30%</span></label>
-            <input type="range" id="thresholdSlider" min="10" max="70" value="30" class="threshold-input">
-            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 5px;">
-                <span>Less Strict</span>
-                <span>More Strict</span>
-            </div>
-        </div>
+  <button id="rescanButton" style="background:#25D366;color:#fff;padding:5px 10px;border:none;border-radius:5px;">Rescan Page</button>
 
-        <button class="button" id="rescanButton">Rescan Messages</button>
+  <div id="statusContainer">
+    <span id="statusIndicator"></span>
+    <span id="statusText">Active</span>
+  </div>
 
-        <div class="info">
-            <strong>ℹ️ How it works:</strong><br>
-            Analyzes messages for spam indicators like suspicious links, urgency keywords, financial requests, and more.
-        </div>
-
-        <div class="footer">
-            Version 1.0.0
-        </div>
-    </div>
-
-    <script src="popup.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>
-
